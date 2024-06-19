@@ -1,0 +1,26 @@
+--cpu Cortex-M3
+"keilc\startup_stm32f103xb.o"
+"keilc\main.o"
+"keilc\stm32f1xx_it.o"
+"keilc\stm32f1xx_hal_msp.o"
+"keilc\stm32f1xx_hal_gpio_ex.o"
+"keilc\stm32f1xx_hal_spi.o"
+"keilc\stm32f1xx_hal.o"
+"keilc\stm32f1xx_hal_rcc.o"
+"keilc\stm32f1xx_hal_rcc_ex.o"
+"keilc\stm32f1xx_hal_gpio.o"
+"keilc\stm32f1xx_hal_dma.o"
+"keilc\stm32f1xx_hal_cortex.o"
+"keilc\stm32f1xx_hal_pwr.o"
+"keilc\stm32f1xx_hal_flash.o"
+"keilc\stm32f1xx_hal_flash_ex.o"
+"keilc\stm32f1xx_hal_exti.o"
+"keilc\stm32f1xx_hal_tim.o"
+"keilc\stm32f1xx_hal_tim_ex.o"
+"keilc\stm32f1xx_hal_uart.o"
+"keilc\stm32f1xx_hal_i2c.o"
+"keilc\system_stm32f1xx.o"
+--strict --scatter "keilc\keilc.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list "keilc.map" -o keilc\keilc.axf
