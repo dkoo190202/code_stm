@@ -212,6 +212,9 @@ unsigned long mp23_old = 0;
 unsigned char wifi_status = 0;
 unsigned char warning = 0;
 
+unsigned char temp_level1 = 35, temp_level2 = 40;
+unsigned int gas_level1 = 1000, gas_level2 = 5000;
+unsigned int smoke_level1 = 1000, smoke_level2 = 5000;
 
 uint8_t check_temp_n1, check_temp_n2, check_temp_n3;
 uint8_t check_mp_n1, check_mp_n2, check_mp_n3;
@@ -443,7 +446,7 @@ OUTPUT_PIN_A8 = 1;
 //        HAL_Delay(3);
 //        printf("ATE%c%c", 0x0d, 0x0a);
 //        HAL_Delay(3);
-//            printf("AT+CMGF=1%c%c", 0x0d, 0x0a); /////////// nhan tin
+            printf("AT+CMGF=1%c%c", 0x0d, 0x0a); /////////// nhan tin
 //            HAL_Delay(3);
 //        printf("AT&W%c%c", 0x0d, 0x0a);
 //        HAL_Delay(20);
@@ -609,21 +612,10 @@ OUTPUT_PIN_A8 = 1;
         if (mp23_ppm > 10000) mp23_ppm = 10000;
         node_update =0;}
 
-        //////////////////////////////////////////////////////////////////////////////////
-//        temp3 = (data_node3[0] - 48) * 100000 + (data_node3[1] - 48) * 10000 + (data_node3[2] - 48) * 1000 + (data_node3[3] - 48) * 100 + (data_node3[4] - 48) * 10 + (data_node3[5] - 48) * 1;
-//        temp3_float = ((float) temp3 * 200) / 1048576 - 50;
-
-//        mq23_adc = (data_node3[6] - 48) * 1000 + (data_node3[7] - 48) * 100 + (data_node3[8] - 48) * 10 + (data_node3[9] - 48) * 1;
-//        rs_mq23 = (1023 / (float) mq23_adc - 1) * 10; // kilo ohm
-//        mq23_ppm = pow(10, (1.25 - log10(rs_mq23 / 3.66)) / 0.45);
-//        if (mq23_ppm > 10000) mq23_ppm = 10000;
-
-//        mp23_adc = (data_node3[10] - 48) * 1000 + (data_node3[11] - 48) * 100 + (data_node3[12] - 48) * 10 + (data_node3[13] - 48) * 1;
-
-        
-			if(node3 == 1){
-				if(check_temp_n3){
-					if(temp3_float >= 38){
+        //////////////////////////////////////////////////////////////////////////////////      
+        if(node3 == 1){
+          if(check_temp_n3){
+            if(temp3_float >= 38){
             if (call_state == 0){
               call_state = 1;
               printf_mode = printf_uart3;
