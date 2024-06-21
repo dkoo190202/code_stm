@@ -212,9 +212,11 @@ unsigned long mp23_old = 0;
 unsigned char wifi_status = 0;
 unsigned char warning = 0;
 
-unsigned char temp_level1 = 35, temp_level2 = 40;
+unsigned char temp_level1 = 35, temp_level2 = 45;
 unsigned int gas_level1 = 1000, gas_level2 = 5000;
 unsigned int smoke_level1 = 1000, smoke_level2 = 5000;
+
+unsigned char warning_level = 0;
 
 uint8_t check_temp_n1, check_temp_n2, check_temp_n3;
 uint8_t check_mp_n1, check_mp_n2, check_mp_n3;
@@ -222,18 +224,35 @@ uint8_t check_mq_n1, check_mq_n2, check_mq_n3;
 
 uint8_t node1, node2, node3;
 
-volatile _Bool ena_sms=0;
+volatile _Bool ena_sms = 0;
 
 volatile unsigned char node_update = 0;
 
-volatile _Bool sim_mode=0;
+volatile _Bool sim_mode = 0;
 
-volatile _Bool call_state=0;
+volatile _Bool call_state = 0;
 
-volatile _Bool no_carrier = 0;
+//volatile _Bool no_carrier = 0;
 
-volatile _Bool begin = 0;
+//volatile _Bool begin = 0;
 
+volatile _Bool verify_call = 0;
+
+volatile _Bool sim_status = 0;
+volatile _Bool ok_chua = 0;
+volatile _Bool ena_begin = 0, ena_carrier = 0, ena_pb_done = 0, ena_ok = 0;
+volatile unsigned char begin_index = 0, carrier_index = 0, pb_done_index = 0, ok_index = 0;
+const char begin[6]="BEGIN";
+const char carrier[8]="CARRIER";
+const char pb_done[8]="PB DONE";
+const char ok[3]="OK";
+
+volatile _Bool sim_stable = 1;
+
+volatile unsigned char sim_read = 0; // 0: kiem tra trang thai ban dau, 1: bat dau ">", 2: bat "BEGIN" va "NO CARRIER", 3: bat "OK"
+volatile _Bool sim_config = 0;
+
+volatile _Bool ena_send_node1 = 0, ena_send_node2 = 0, ena_send_node3 = 0;
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -256,6 +275,7 @@ SPI_HandleTypeDef hspi2;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
@@ -274,6 +294,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART3_UART_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -288,7 +309,7 @@ static void MX_USART3_UART_Init(void);
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART1) {
-    
+
         if (byte_rx1[0] == 'S') {
             ena_rx1 = 1;
             rx1_index = 0;
@@ -299,20 +320,21 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
         } else if (byte_rx1[0] == 'P' && ena_rx1 == 1) {
             if (data_rx_uart1[0] == 1) {
                 check_state_node1 = 1;
-                node_update =1;
+                node_update = 1;
                 for (uint8_t i = 0; i < 14; i++) data_node1[i] = data_rx_uart1[i + 1];
             } else if (data_rx_uart1[0] == 2) {
                 check_state_node2 = 1;
-                node_update =2;
+                node_update = 2;
                 for (uint8_t i = 0; i < 14; i++) data_node2[i] = data_rx_uart1[i + 1];
             } else if (data_rx_uart1[0] == 3) {
                 check_state_node3 = 1;
-                node_update =3;
+                node_update = 3;
                 for (uint8_t i = 0; i < 14; i++) data_node3[i] = data_rx_uart1[i + 1];
             }
             ena_rx1 = 0;
         }
         HAL_UART_Receive_IT(&huart1, byte_rx1, 1);
+////////////////////////////////////////////////////////////////////////////////////////
     } else if (huart->Instance == USART2) {
         if (byte_rx2[0] == 'S') {
             ena_rx2 = 1;
@@ -330,22 +352,72 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
             ena_rx2 = 0;
         }
         HAL_UART_Receive_IT(&huart2, byte_rx2, 1);
+/////////////////////////////////////////////////////////////////////////////////
     } else if (huart->Instance == USART3) {
-      if (sim_mode == 0)
-      {
-        if (byte_rx3[0] == 0x3e) ena_sms = 1;
-        else HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-      }
-      else 
-      {
-        if (byte_rx3[0] == 'B') begin =1;
-        else if (byte_rx3[0] == 'R') no_carrier = 1; 
-        else HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-      }
+        if (sim_read == 0) {
+            if (byte_rx3[0] == 'P') {
+                ena_pb_done = 1;
+                pb_done_index = 0;
+            }
+            if (ena_pb_done == 1) {
+                if (pb_done[pb_done_index] != byte_rx3[0]) ena_pb_done = 0;
+                pb_done_index++;
+                if (pb_done_index > 6) sim_stable = 1;
+            }
+            HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+        } else if (sim_read == 1) {
+            if (byte_rx3[0] == 0x3e) {
+                delay_us(10000);
+                ena_sms = 1;
+            } 
+            HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+        } else if (sim_read == 2) {
+            if (byte_rx3[0] == 'B') {
+                ena_begin = 1;
+                begin_index = 0;
+            }
+            if (ena_begin == 1) {
+                if (begin[begin_index] != byte_rx3[0]) ena_begin = 0;
+                begin_index++;
+                if (begin_index > 4) verify_call = 1;
+            }
+
+            if (byte_rx3[0] == 'C') {
+                ena_carrier = 1;
+                carrier_index = 0;
+            }
+            if (ena_carrier == 1) {
+                if (carrier[carrier_index] != byte_rx3[0]) ena_carrier = 0;
+                carrier_index++;
+                if (carrier_index > 6) {
+                    sim_status = 0;
+                    delay_us(60000);
+                    delay_us(60000);
+                    delay_us(60000);
+                    delay_us(60000);
+                }
+            }
+            //            if (sim_status == 1) 
+            HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+        }
+        else if (sim_read == 3){
+          if (byte_rx3[0] == 'O') {
+                ena_ok = 1;
+                ok_index = 0;
+            }
+            if (ena_ok == 1) {
+                if (ok[ok_index] != byte_rx3[0]) ena_ok = 0;
+                else {
+                  ok_index++;
+                  if (ok_index > 1) {sim_status = 0, ok_chua = 1;}
+                }
+            }
+            HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+        }
     }
-        
+
 }
-//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_8);
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM2) {
         if (request_node == 1) {
@@ -384,7 +456,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
         }
         request_node++;
         if (request_node > 3) request_node = 1;
-        __HAL_TIM_SET_COUNTER(&htim2, 61535); //150ms
+        __HAL_TIM_SET_COUNTER(&htim2, 63035); //250ms
+//        LATCH = ~LATCH;
+    }
+    else if (htim->Instance == TIM3) {
+        if (warning_level == 1)
+        {
+          BELL =~ BELL;
+          if (BELL == 1) __HAL_TIM_SET_COUNTER(&htim3, 45535); // TAT 10S
+          else __HAL_TIM_SET_COUNTER(&htim3, 55535); // BAT 5S
+        }
+        else __HAL_TIM_SET_COUNTER(&htim3, 0);
     }
 }
 
@@ -425,9 +507,11 @@ int main(void)
   MX_SPI2_Init();
   MX_TIM2_Init();
   MX_USART3_UART_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
     //////////////////////////////////////////////
     HAL_TIM_Base_Start(&htim1);
+    
     MD0 = 0;
     MD1 = 0;
     RELAY1 = 1;
@@ -439,59 +523,84 @@ int main(void)
     LED3 = 1;
     LCD_I2C_INIT();
     //////////////////////////////////////////////////
-OUTPUT_PIN_A8 = 1;
-//LCD_BACKLIGHT_OFF();
+    OUTPUT_PIN_A8 = 1;
+    //LCD_BACKLIGHT_OFF();
     printf_mode = printf_uart3;
-//        printf("AT%c%c", 0x0d, 0x0a);
-//        HAL_Delay(3);
-//        printf("ATE%c%c", 0x0d, 0x0a);
-//        HAL_Delay(3);
-            printf("AT+CMGF=1%c%c", 0x0d, 0x0a); /////////// nhan tin
-//            HAL_Delay(3);
-//        printf("AT&W%c%c", 0x0d, 0x0a);
-//        HAL_Delay(20);
+    //        printf("AT%c%c", 0x0d, 0x0a);
+    //        HAL_Delay(3);
+    //        printf("ATE%c%c", 0x0d, 0x0a);
+    //        HAL_Delay(3);
+//    printf("AT+CMGF=1%c%c", 0x0d, 0x0a); /////////// nhan tin
+    //            HAL_Delay(3);
+    //        printf("AT&W%c%c", 0x0d, 0x0a);
+    //        HAL_Delay(20);
     //    printf("AT+CMGD=1,4%c%c", 0x0d, 0x0a);
     //    printf("AT+CUSD=1,%c*101#%c,%u%c%c",0x22, 0x22, 17, 0x0d, 0x0a);
     //    printf("AT+CUSD?%c%c", 0x0d, 0x0a);
     //
     //    printf("AT+CMGS=%c0862335521%c%c%c",0x22, 0x22, 0x0d, 0x0a); //
-//              printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a); //
-//              HAL_Delay(150); //
-//              printf("hellooo%c", 0x1a); /////////////////////
-//      HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-//      sim_mode =1;
-//        printf("ATD0868390442;%c%c", 0x0d, 0x0a); // goi dien
-        
+    //              printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a); //
+    //              HAL_Delay(150); //
+    //              printf("hellooo%c", 0x1a); /////////////////////
+    //      HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+    //      sim_mode =1;
+//            printf("ATD0868390442;%c%c", 0x0d, 0x0a); // goi dien
+
     //    printf("AT+CNMI=2,2%c%c", 0x0d, 0x0a);
     //    printf("AT+CMGR=3%c%c", 0x0d, 0x0a);
-//HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+    HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
     printf_mode = printf_uart3;
-    
-//     printf("AT+CMGF=1%c%c", 0x0d, 0x0a); /////////// dua ve dang text
-//    HAL_Delay(100);
+
+    //     printf("AT+CMGF=1%c%c", 0x0d, 0x0a); /////////// dua ve dang text
+    //    HAL_Delay(100);
 
 
     HAL_UART_Receive_IT(&huart1, byte_rx1, 1);
     HAL_UART_Receive_IT(&huart2, byte_rx2, 1);
-    
-    
+
+
     __HAL_TIM_SET_COUNTER(&htim2, 65500);
     HAL_TIM_Base_Start_IT(&htim2);
+    
+//    HAL_TIM_Base_Stop_IT(&htim3);
+//    HAL_TIM_Base_Start_IT(&htim3);
+    __HAL_TIM_SET_COUNTER(&htim3, 65530);
 
     //    __HAL_TIM_SET_COUNTER(&htim3, 65500);
     //    HAL_TIM_Base_Start_IT(&htim3);
 
     BELL = 1;
-
+//    HAL_Delay(10000);
+//    printf("AT+CMGF=1%c%c", 0x0d, 0x0a); /////////// nhan tin
+//    HAL_Delay(1000);
+//    printf("AT&W%c%c", 0x0d, 0x0a);
+//    HAL_Delay(20);
+//    printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a); 
+//    printf("AT+CMGS=%c0862335521%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+//    HAL_Delay(5000);
+//    printf("HI%c",0x1a);          
+//              
+              
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
     while (1) {
-        LATCH  = ~LATCH;
+        if (sim_stable == 1)
+        {
+          if (sim_config == 0)
+          {
+            sim_config = 1;
+            printf_mode = printf_uart3;
+            printf("AT+CMGF=1%c%c", 0x0d, 0x0a); /////////// nhan tin
+            sim_read = 3;
+            HAL_Delay(20);
+          }
+        }
         printf_mode = printf_lcd_i2c;
         LCD_I2C_GOTO_XY(10, 1);
-        printf("%u", call_state);
+        printf("%u", sim_status);
+//        printf("%x", begin[1]);
         if (display_mode == 1) {
             if (state_node1 == 1) {
                 printf_mode = printf_lcd_i2c;
@@ -512,6 +621,9 @@ OUTPUT_PIN_A8 = 1;
                 printf("  DISCONNECT");
                 LCD_I2C_GOTO_XY(1, 4);
                 printf("             ");
+                temp1_float = 10;
+                mq21_ppm = 0;
+                mp21_ppm = 0;
             }
         } else if (display_mode == 2) {
             if (state_node2 == 1) {
@@ -533,6 +645,9 @@ OUTPUT_PIN_A8 = 1;
                 printf("  DISCONNECT");
                 LCD_I2C_GOTO_XY(1, 4);
                 printf("             ");
+                temp2_float = 10;
+                mq22_ppm = 0;
+                mp22_ppm = 0;
             }
         } else if (display_mode == 3) {
             if (state_node3 == 1) {
@@ -554,6 +669,9 @@ OUTPUT_PIN_A8 = 1;
                 printf("  DISCONNECT");
                 LCD_I2C_GOTO_XY(1, 4);
                 printf("             ");
+                temp3_float = 10;
+                mq23_ppm = 0;
+                mp23_ppm = 0;
             }
         }
 
@@ -573,108 +691,219 @@ OUTPUT_PIN_A8 = 1;
         if (RELAY4 == 0) printf("D4: ON");
         else printf("D4:OFF");
         //////////////////////////////////////////////////////////////////////////////
-        if (node_update == 1){
-        temp1 = (data_node1[0] - 48) * 100000 + (data_node1[1] - 48) * 10000 + (data_node1[2] - 48) * 1000 + (data_node1[3] - 48) * 100 + (data_node1[4] - 48) * 10 + (data_node1[5] - 48) * 1;
-        temp1_float = ((float) temp1 * 200) / 1048576 - 50;
+        if (node_update == 1) {
+            temp1 = (data_node1[0] - 48) * 100000 + (data_node1[1] - 48) * 10000 + (data_node1[2] - 48) * 1000 + (data_node1[3] - 48) * 100 + (data_node1[4] - 48) * 10 + (data_node1[5] - 48) * 1;
+            temp1_float = ((float) temp1 * 200) / 1048576 - 50;
 
-        mq21_adc = (data_node1[6] - 48) * 1000 + (data_node1[7] - 48) * 100 + (data_node1[8] - 48) * 10 + (data_node1[9] - 48) * 1;
-        rs_mq21 = (1023 / (float) mq21_adc - 1) * 10; // kilo ohm
-        mq21_ppm = pow(10, (1.25 - log10(rs_mq21 / 3.66)) / 0.45);
-        if (mq21_ppm > 10000) mq21_ppm = 10000;
+            mq21_adc = (data_node1[6] - 48) * 1000 + (data_node1[7] - 48) * 100 + (data_node1[8] - 48) * 10 + (data_node1[9] - 48) * 1;
+            rs_mq21 = (1023 / (float) mq21_adc - 1) * 10; // kilo ohm
+            mq21_ppm = pow(10, (1.25 - log10(rs_mq21 / 3.66)) / 0.45);
+            if (mq21_ppm > 10000) mq21_ppm = 10000;
 
-        mp21_ppm = pow(10, (1.55 - log10(rs_mq21 / 3.66)) / 0.44);
-        if (mp21_ppm > 10000) mp21_ppm = 10000;
-        node_update =0;}
+            mp21_ppm = pow(10, (1.55 - log10(rs_mq21 / 3.66)) / 0.44);
+            if (mp21_ppm > 10000) mp21_ppm = 10000;
+            node_update = 0;
+        }
         ////////////////////////////////////////////////////////////////////////////////////
-         if (node_update ==2){
-        temp2 = (data_node2[0] - 48) * 100000 + (data_node2[1] - 48) * 10000 + (data_node2[2] - 48) * 1000 + (data_node2[3] - 48) * 100 + (data_node2[4] - 48) * 10 + (data_node2[5] - 48) * 1;
-        temp2_float = ((float) temp2 * 200) / 1048576 - 50;
+        if (node_update == 2) {
+            temp2 = (data_node2[0] - 48) * 100000 + (data_node2[1] - 48) * 10000 + (data_node2[2] - 48) * 1000 + (data_node2[3] - 48) * 100 + (data_node2[4] - 48) * 10 + (data_node2[5] - 48) * 1;
+            temp2_float = ((float) temp2 * 200) / 1048576 - 50;
 
-        mq22_adc = (data_node2[6] - 48) * 1000 + (data_node2[7] - 48) * 100 + (data_node2[8] - 48) * 10 + (data_node2[9] - 48) * 1;
-        rs_mq22 = (1023 / (float) mq22_adc - 1) * 10; // kilo ohm
-        mq22_ppm = pow(10, (1.25 - log10(rs_mq22 / 3.66)) / 0.45);
-        if (mq22_ppm > 10000) mq22_ppm = 10000;
-        mp22_ppm = pow(10, (1.55 - log10(rs_mq22 / 3.66)) / 0.44);
-        if (mp22_ppm > 10000) mp22_ppm = 10000;
-        node_update =0;}
-        
+            mq22_adc = (data_node2[6] - 48) * 1000 + (data_node2[7] - 48) * 100 + (data_node2[8] - 48) * 10 + (data_node2[9] - 48) * 1;
+            rs_mq22 = (1023 / (float) mq22_adc - 1) * 10; // kilo ohm
+            mq22_ppm = pow(10, (1.25 - log10(rs_mq22 / 3.66)) / 0.45);
+            if (mq22_ppm > 10000) mq22_ppm = 10000;
+            mp22_ppm = pow(10, (1.55 - log10(rs_mq22 / 3.66)) / 0.44);
+            if (mp22_ppm > 10000) mp22_ppm = 10000;
+            node_update = 0;
+        }
+
         //////////////////////////////////////////////////////////////////////////////////
-        if (node_update ==3){
-        temp3 = (data_node3[0] - 48) * 100000 + (data_node3[1] - 48) * 10000 + (data_node3[2] - 48) * 1000 + (data_node3[3] - 48) * 100 + (data_node3[4] - 48) * 10 + (data_node3[5] - 48) * 1;
-        temp3_float = ((float) temp3 * 200) / 1048576 - 50 ;
+        if (node_update == 3) {
+            temp3 = (data_node3[0] - 48) * 100000 + (data_node3[1] - 48) * 10000 + (data_node3[2] - 48) * 1000 + (data_node3[3] - 48) * 100 + (data_node3[4] - 48) * 10 + (data_node3[5] - 48) * 1;
+            temp3_float = ((float) temp3 * 200) / 1048576 - 50;
 
-        mq23_adc = (data_node3[6] - 48) * 1000 + (data_node3[7] - 48) * 100 + (data_node3[8] - 48) * 10 + (data_node3[9] - 48) * 1;
-        rs_mq23 = (1023 / (float) mq23_adc - 1) * 10; // kilo ohm
-        mq23_ppm = pow(10, (1.25 - log10(rs_mq23 / 3.66)) / 0.45);
-        if (mq23_ppm > 10000) mq23_ppm = 10000;
-        
-        mp23_ppm = pow(10, (1.55 - log10(rs_mq23 / 3.66)) / 0.44);
-        if (mp23_ppm > 10000) mp23_ppm = 10000;
-        node_update =0;}
+            mq23_adc = (data_node3[6] - 48) * 1000 + (data_node3[7] - 48) * 100 + (data_node3[8] - 48) * 10 + (data_node3[9] - 48) * 1;
+            rs_mq23 = (1023 / (float) mq23_adc - 1) * 10; // kilo ohm
+            mq23_ppm = pow(10, (1.25 - log10(rs_mq23 / 3.66)) / 0.45);
+            if (mq23_ppm > 10000) mq23_ppm = 10000;
 
-        //////////////////////////////////////////////////////////////////////////////////      
-        if(node3 == 1){
-          if(check_temp_n3){
-            if(temp3_float >= 38){
-            if (call_state == 0){
-              call_state = 1;
-              printf_mode = printf_uart3;
-              HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-              sim_mode =1;
-              printf("ATD0868390442;%c%c", 0x0d, 0x0a);
+            mp23_ppm = pow(10, (1.55 - log10(rs_mq23 / 3.66)) / 0.44);
+            if (mp23_ppm > 10000) mp23_ppm = 10000;
+            node_update = 0;
+        }
+
+        //////////////////////////////////////////////////////////////////////////////////   
+
+        if (temp1_float > temp_level2 || mq21_ppm > gas_level2 || mp21_ppm > smoke_level2 || temp2_float > temp_level2 || mq22_ppm > gas_level2 || mp22_ppm > smoke_level2 || temp3_float > temp_level2 || mq23_ppm > gas_level2 || mp23_ppm > smoke_level2) {
+            if (warning_level != 2) {
+                warning_level = 2;
+                verify_call = 0;
             }
-            else if (begin == 1) call_state = 1;
-            else if (no_carrier == 1) call_state = 0;
-					}
-					else if(temp3_float - temp3_old >=2.0)
-					{
-//						temp3_old = temp3_float;
-//						printf_mode = printf_uart3;
-//						printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
-//            HAL_Delay(20);
-//						printf("Warning - NODE3 - Temperature: %0.2f%c", temp3_float, 0x1a);
-					}
-					else if(temp3_float < 36)
-					{
-            call_state = 0;
-						node3 = 0;
-						check_temp_n3 = 0;
-            begin=0;
-            no_carrier=0;
-            HAL_Delay(200);
-					}
-				}
+        } else if (temp1_float > temp_level1 || mq21_ppm > gas_level1 || mp21_ppm > smoke_level1 || temp2_float > temp_level1 || mq22_ppm > gas_level1 || mp22_ppm > smoke_level1 || temp3_float > temp_level1 || mq23_ppm > gas_level1 || mp23_ppm > smoke_level1) {
+            if (warning_level != 1) {
+                warning_level = 1;
+                if (sim_config == 1) {
+                    if (sim_status == 0) //  sim dang ranh
+                    {
+                        sim_status = 1; // sim dang ban ( dang chuan bi gui tin nhan )
+                        printf_mode = printf_uart3;
+                        sim_read = 1;
+                        HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+                        //              printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+                        printf("AT+CMGS=%c0862335521%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
+                        while (ena_sms == 0);
+                        sim_read = 3;
+                        //              printf("Warning - NODE3 - Temperature: %0.2f - Gas: %05luppm - Smoke: %05luppm%c", temp3_float, mq23_ppm, mp23_ppm, 0x1a);
+                        printf("HI%c", 0x1a);
+//                        sim_status = 0; //  sim dang ranh
+                        ena_sms = 0;
+                    }
+                }
+            }
+            ///////////////////////////////////////
+            if (temp1_float > temp_level1) {
+                if (temp1_old == 0){
+                  temp1_old = temp1_float;
+                  ena_send_node1 = 1;
+                }
+                else {
+                  if (temp1_float - temp1_old > 3) {
+                    temp1_old = temp1_float;
+                    ena_send_node1 = 1;
+                  }
+                }
+            }
+            else temp1_old = 0;
+            //////////////////////////////////////////////
+            if (temp2_float > temp_level1) {
+                if (temp2_old == 0) temp2_old = temp2_float;
+            }
+
+            if (temp3_float > temp_level1) {
+                if (temp3_old == 0) temp3_old = temp3_float;
+            }
+
+        } else warning_level = 0;
+
+        if (warning_level == 2) {
+            BELL = 0;
+            if (sim_config == 1) {
+                if (verify_call == 0) {
+                    if (sim_status == 0) //  sim dang ranh
+                    {
+                        sim_status = 1; // sim dang ban ( dang chuan bi goi )
+                        printf_mode = printf_uart3;
+                        sim_read = 2;
+                        HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+                        //              printf("ATD0868390442;%c%c", 0x0d, 0x0a);
+                        printf("ATD0862335521;%c%c", 0x0d, 0x0a);
+                    }
+                }
+            }
         }
-			if(node3 == 0){
-				if((temp3_float >=36)) 
-				{
-					node3 = 1;
-					warning = 1;
-//          printf_mode = printf_lcd_i2c;
-//					printf_mode = printf_uart2;
-//					warning = warning | 0x01;
-//					printf("%cW%c%c", 'S', warning, 'P');
-					printf_mode = printf_uart3;
-          sim_mode =0;
-          OUTPUT_PIN_A8 = ~OUTPUT_PIN_A8;
-          HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-					printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
-//          HAL_Delay(20);
-//          if (data_rx_uart3[18]== 0x3e || data_rx_uart3[19]== 0x3e ) ena_sms = 1;
-          while(ena_sms ==0){};
-          printf("Warning - NODE3 - Temperature: %0.2f - Gas: %05luppm - Smoke: %05luppm%c", temp3_float, mq23_ppm, mp23_ppm, 0x1a);
-           ena_sms = 0;
-          if(temp3_float >=36) check_temp_n3 = 1;
-//          if(mq23_ppm >= 30) check_mq_n3 = 1;
-//          if(mp23_ppm >= 50) check_mp_n3 = 1;
-          temp3_old = temp3_float;
-//          mq23_old = mq23_ppm;
-//          mp23_old = mp23_ppm;
-        }
-      }
-      
-      
         
+        else if (warning_level == 1)
+        {
+          if (sim_config == 1) {
+            if (sim_status == 0) { //  sim dang ranh
+              if (ena_send_node1 == 1) {
+                ena_send_node1 = 0;
+                printf_mode = printf_uart3;
+                sim_read = 1;
+                HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+                //              printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+                printf("AT+CMGS=%c0862335521%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
+                while (ena_sms == 0);
+                sim_read = 3;
+                //              printf("Warning - NODE3 - Temperature: %0.2f - Gas: %05luppm - Smoke: %05luppm%c", temp3_float, mq23_ppm, mp23_ppm, 0x1a);
+                printf("gui data node 1%c", 0x1a);
+                
+//                sim_status = 0; //  sim dang ranh
+                ena_sms = 0;
+              }
+            }
+          }
+        }
+
+//          if (sim_config == 1) {
+//            
+//          }
+//          if (sim_status == 0) //  sim dang ranh
+//            {
+//              sim_status = 1; // sim dang ban ( dang chuan bi gui tin nhan )
+//              printf_mode = printf_uart3;
+//              sim_mode = 0;
+//              HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+//              printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+//              while (ena_sms == 0);
+//              printf("Warning - NODE3 - Temperature: %0.2f - Gas: %05luppm - Smoke: %05luppm%c", temp3_float, mq23_ppm, mp23_ppm, 0x1a);
+//              sim_status = 0; //  sim dang ranh
+//              ena_sms = 0;
+//            }
+
+        else 
+        {
+          BELL = 1;
+        }
+//        else if (warning_level == 1){};
+//        if (node3 == 1) {
+//            if (check_temp_n3) {
+//                if (temp3_float >= 38) {
+//                    if (call_state == 0) {
+//                        call_state = 1;
+//                        printf_mode = printf_uart3;
+//                        HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+//                        sim_mode = 1;
+//                        printf("ATD0868390442;%c%c", 0x0d, 0x0a);
+//                    } else if (begin == 1) call_state = 1;
+//                    else if (no_carrier == 1) call_state = 0;
+//                } else if (temp3_float - temp3_old >= 2.0) {
+//                    //						temp3_old = temp3_float;
+//                    //						printf_mode = printf_uart3;
+//                    //						printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+//                    //            HAL_Delay(20);
+//                    //						printf("Warning - NODE3 - Temperature: %0.2f%c", temp3_float, 0x1a);
+//                } else if (temp3_float < 36) {
+//                    call_state = 0;
+//                    node3 = 0;
+//                    check_temp_n3 = 0;
+//                    begin = 0;
+//                    no_carrier = 0;
+//                    HAL_Delay(200);
+//                }
+//            }
+//        }
+//        if (node3 == 0) {
+//            if ((temp3_float >= 36)) {
+//                node3 = 1;
+//                warning = 1;
+//                //          printf_mode = printf_lcd_i2c;
+//                //					printf_mode = printf_uart2;
+//                //					warning = warning | 0x01;
+//                //					printf("%cW%c%c", 'S', warning, 'P');
+//                printf_mode = printf_uart3;
+//                sim_mode = 0;
+//                OUTPUT_PIN_A8 = ~OUTPUT_PIN_A8;
+//                HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+//                printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
+//                //          HAL_Delay(20);
+//                //          if (data_rx_uart3[18]== 0x3e || data_rx_uart3[19]== 0x3e ) ena_sms = 1;
+//                while (ena_sms == 0) {
+//                };
+//                printf("Warning - NODE3 - Temperature: %0.2f - Gas: %05luppm - Smoke: %05luppm%c", temp3_float, mq23_ppm, mp23_ppm, 0x1a);
+//                ena_sms = 0;
+//                if (temp3_float >= 36) check_temp_n3 = 1;
+//                //          if(mq23_ppm >= 30) check_mq_n3 = 1;
+//                //          if(mp23_ppm >= 50) check_mp_n3 = 1;
+//                temp3_old = temp3_float;
+//                //          mq23_old = mq23_ppm;
+//                //          mp23_old = mp23_ppm;
+//            }
+//        }
+
+
+
         printf_mode = printf_uart2;
         if (SL_BT == 0) {
             HAL_Delay(10);
@@ -735,7 +964,7 @@ OUTPUT_PIN_A8 = 1;
                 while (WR_BT == 0);
                 BELL = ~BELL;
                 if (BELL == 0) warning = 1;
-                else warning =0;
+                else warning = 0;
                 printf("%cW%c%c", 'S', warning, 'P');
 
             }
@@ -752,9 +981,9 @@ OUTPUT_PIN_A8 = 1;
 
         if ((control_devices & 0x08) == 0) RELAY4 = 1;
         else RELAY4 = 0;
-        
-        if (warning == 0) BELL =1;
-        else BELL =0;
+
+//        if (warning == 0) BELL = 1;
+//        else BELL = 0;
         dem++;
         if (dem % 250 == 0) {
             printf("%c%0.2f%05lu%05lu%0.2f%05lu%05lu%0.2f%05lu%05lu%c", 'S', temp1_float, (unsigned long) mq21_ppm, (unsigned long) mp21_ppm, temp2_float, (unsigned long) mq22_ppm, (unsigned long) mp22_ppm, temp3_float, (unsigned long) mq23_ppm, (unsigned long) mp23_ppm, 'P');
@@ -946,6 +1175,51 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 36000;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65535;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
 
 }
 
