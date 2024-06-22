@@ -739,6 +739,9 @@ int main(void)
             if (warning_level != 2) {
                 warning_level = 2;
                 verify_call = 0;
+//                temp1_old = 0;
+//                temp2_old = 0;
+//                temp3_old = 0;
             }
         } else if (temp1_float > temp_level1 || mq21_ppm > gas_level1 || mp21_ppm > smoke_level1 || temp2_float > temp_level1 || mq22_ppm > gas_level1 || mp22_ppm > smoke_level1 || temp3_float > temp_level1 || mq23_ppm > gas_level1 || mp23_ppm > smoke_level1) {
             if (warning_level != 1) {
@@ -750,13 +753,12 @@ int main(void)
                         printf_mode = printf_uart3;
                         sim_read = 1;
                         HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-                        //              printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
-                        printf("AT+CMGS=%c0862335521%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
+                        printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+//                        printf("AT+CMGS=%c0862335521%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                         while (ena_sms == 0);
                         sim_read = 3;
                         //              printf("Warning - NODE3 - Temperature: %0.2f - Gas: %05luppm - Smoke: %05luppm%c", temp3_float, mq23_ppm, mp23_ppm, 0x1a);
                         printf("HI%c", 0x1a);
-//                        sim_status = 0; //  sim dang ranh
                         ena_sms = 0;
                     }
                 }
@@ -777,14 +779,40 @@ int main(void)
             else temp1_old = 0;
             //////////////////////////////////////////////
             if (temp2_float > temp_level1) {
-                if (temp2_old == 0) temp2_old = temp2_float;
+                if (temp2_old == 0){
+                  temp2_old = temp2_float;
+                  ena_send_node2 = 1;
+                }
+                else {
+                  if (temp2_float - temp2_old > 3) {
+                    temp2_old = temp2_float;
+                    ena_send_node2 = 1;
+                  }
+                }
             }
-
+            else temp2_old = 0;
+            //////////////////////////////////////////////
             if (temp3_float > temp_level1) {
-                if (temp3_old == 0) temp3_old = temp3_float;
+                if (temp3_old == 0){
+                  temp3_old = temp3_float;
+                  ena_send_node3 = 1;
+                }
+                else {
+                  if (temp3_float - temp3_old > 3) {
+                    temp3_old = temp3_float;
+                    ena_send_node3 = 1;
+                  }
+                }
             }
+            else temp3_old = 0;
+            //////////////////////////////////////////////
 
-        } else warning_level = 0;
+        } else {
+            warning_level = 0;
+            temp1_old = 0;
+            temp2_old = 0;
+            temp3_old = 0;
+          }
 
         if (warning_level == 2) {
             BELL = 0;
@@ -796,8 +824,8 @@ int main(void)
                         printf_mode = printf_uart3;
                         sim_read = 2;
                         HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-                        //              printf("ATD0868390442;%c%c", 0x0d, 0x0a);
-                        printf("ATD0862335521;%c%c", 0x0d, 0x0a);
+                        printf("ATD0868390442;%c%c", 0x0d, 0x0a);
+//                        printf("ATD0862335521;%c%c", 0x0d, 0x0a);
                     }
                 }
             }
@@ -807,40 +835,47 @@ int main(void)
         {
           if (sim_config == 1) {
             if (sim_status == 0) { //  sim dang ranh
+            /////////////////////////////////////////////////
               if (ena_send_node1 == 1) {
                 ena_send_node1 = 0;
                 printf_mode = printf_uart3;
                 sim_read = 1;
                 HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-                //              printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
-                printf("AT+CMGS=%c0862335521%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
+                printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+//                printf("AT+CMGS=%c0862335521%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                 while (ena_sms == 0);
                 sim_read = 3;
-                //              printf("Warning - NODE3 - Temperature: %0.2f - Gas: %05luppm - Smoke: %05luppm%c", temp3_float, mq23_ppm, mp23_ppm, 0x1a);
-                printf("gui data node 1%c", 0x1a);
-                
-//                sim_status = 0; //  sim dang ranh
+                printf("WARNING - NODE 1\r\n+ Temperature: %0.2f do C\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp1_float, mq21_ppm, mp21_ppm, 0x1a);
+//                printf("gui data node 1%c", 0x1a);
+                ena_sms = 0;
+              }
+              if (ena_send_node2 == 1) {
+                ena_send_node2 = 0;
+                printf_mode = printf_uart3;
+                sim_read = 1;
+                HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+                printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+//                printf("AT+CMGS=%c0862335521%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
+                while (ena_sms == 0);
+                sim_read = 3;
+                printf("WARNING - NODE 2\r\n+ Temperature: %0.2f do C\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp2_float, mq22_ppm, mp22_ppm, 0x1a);
+                ena_sms = 0;
+              }
+              if (ena_send_node3 == 1) {
+                ena_send_node3 = 0;
+                printf_mode = printf_uart3;
+                sim_read = 1;
+                HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+                printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+//                printf("AT+CMGS=%c0862335521%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
+                while (ena_sms == 0);
+                sim_read = 3;
+                printf("WARNING - NODE 3\r\n+ Temperature: %0.2f do C\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp3_float, mq23_ppm, mp23_ppm, 0x1a);
                 ena_sms = 0;
               }
             }
           }
         }
-
-//          if (sim_config == 1) {
-//            
-//          }
-//          if (sim_status == 0) //  sim dang ranh
-//            {
-//              sim_status = 1; // sim dang ban ( dang chuan bi gui tin nhan )
-//              printf_mode = printf_uart3;
-//              sim_mode = 0;
-//              HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-//              printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
-//              while (ena_sms == 0);
-//              printf("Warning - NODE3 - Temperature: %0.2f - Gas: %05luppm - Smoke: %05luppm%c", temp3_float, mq23_ppm, mp23_ppm, 0x1a);
-//              sim_status = 0; //  sim dang ranh
-//              ena_sms = 0;
-//            }
 
         else 
         {
