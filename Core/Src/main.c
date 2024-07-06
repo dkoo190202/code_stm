@@ -649,10 +649,21 @@ int main(void)
             sim_read = 3;
             while (sim_status == 1);
             sim_config = 1;
+            
+            HAL_Delay(500);
+            sim_status = 1; // sim dang ban ( dang chuan bi gui tin nhan )
+            printf_mode = printf_uart3;
+            sim_read = 1;
+            HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+            printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+            while (ena_sms == 0);
+            sim_read = 3;
+            printf("System is Active%c", 0x1a);
+            ena_sms = 0;
 //            sim_read = 4;
           }
         }
-//        printf_mode = printf_lcd_i2c;
+//        
 //        LCD_I2C_GOTO_XY(10, 1);
 ////        printf("%u", sim_status);
 //        printf("%u", auto_warning);
@@ -673,10 +684,9 @@ int main(void)
           mq23_ppm = 0;
           mp23_ppm = 0;
         }
-        
+        printf_mode = printf_lcd_i2c;
         if (display_mode == 1) {
             if (state_node1 == 1) {
-                printf_mode = printf_lcd_i2c;
                 LCD_I2C_GOTO_XY(1, 1);
                 printf("NODE 1:");
                 LCD_I2C_GOTO_XY(1, 2);
@@ -697,7 +707,6 @@ int main(void)
             }
         } else if (display_mode == 2) {
             if (state_node2 == 1) {
-                printf_mode = printf_lcd_i2c;
                 LCD_I2C_GOTO_XY(1, 1);
                 printf("NODE 2:");
                 LCD_I2C_GOTO_XY(1, 2);
@@ -718,7 +727,6 @@ int main(void)
             }
         } else if (display_mode == 3) {
             if (state_node3 == 1) {
-                printf_mode = printf_lcd_i2c;
                 LCD_I2C_GOTO_XY(1, 1);
                 printf("NODE 3:");
                 LCD_I2C_GOTO_XY(1, 2);
@@ -855,7 +863,7 @@ int main(void)
             }
             else temp3_old = 0;
             //////////////////////////////////////////////
-            if (warning_level != 1) {
+            if (warning_level == 0) {
                 warning_level = 1;
                 if (sim_config == 1) {
                     if (sim_status == 0) //  sim dang ranh
@@ -871,7 +879,24 @@ int main(void)
                         ena_sms = 0;
                     }
                 }
-            }
+            } 
+//            else if (warning_level == 2) {
+//                warning_level = 1;
+//                if (sim_config == 1) {
+//                    if (sim_status == 0) //  sim dang ranh
+//                    {
+//                        sim_status = 1; // sim dang ban ( dang chuan bi gui tin nhan )
+//                        printf_mode = printf_uart3;
+//                        sim_read = 1;
+//                        HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+//                        printf("AT+CMGS=%c0868390442%c%c%c",0x22, 0x22, 0x0d, 0x0a);
+//                        while (ena_sms == 0);
+//                        sim_read = 3;
+//                        printf("WARNING LEVEL DOWN%c", 0x1a);
+//                        ena_sms = 0;
+//                    }
+//                }
+//                }
 
         } else {
             warning_level = 0;
@@ -879,6 +904,7 @@ int main(void)
             temp2_old = 0;
             temp3_old = 0;
           }
+
 
         if (warning_level == 2) {
             BELL = 0;
