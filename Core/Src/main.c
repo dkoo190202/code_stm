@@ -168,7 +168,7 @@ volatile unsigned char id_mes_ascii[4] = {};
 volatile unsigned char id_index = 0;
 unsigned char id_mess = 0;
 
-volatile _Bool sim_stable = 1;
+volatile _Bool sim_stable = 0;
 
 volatile unsigned char sim_read = 0; // 0: kiem tra trang thai ban dau, 1: bat dau ">", 2: bat "BEGIN" va "NO CARRIER", 3: bat "OK", 4: bat "CMTI"
 volatile _Bool sim_config = 0;
@@ -188,6 +188,7 @@ unsigned int check = 0;
 
 volatile _Bool mti_true = 0;
 volatile _Bool ena_id_mess = 0;
+_Bool ena_end_of_warning = 0;
 
 SPI_HandleTypeDef hspi2;
 
@@ -410,12 +411,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void tinh_id_mess()
-{
-  if (id_index==1) id_mess = id_mes_ascii[0]-48;
-  else if (id_index==1) id_mess = (id_mes_ascii[0]-48)*10 + id_mes_ascii[1]-48;
-  else if (id_index==1) id_mess = (id_mes_ascii[0]-48)*100 + (id_mes_ascii[1]-48)*10 + id_mes_ascii[2]-48;
+
+void tinh_id_mess() {
+    if (id_index == 1) id_mess = id_mes_ascii[0] - 48;
+    else if (id_index == 1) id_mess = (id_mes_ascii[0] - 48)*10 + id_mes_ascii[1] - 48;
+    else if (id_index == 1) id_mess = (id_mes_ascii[0] - 48)*100 + (id_mes_ascii[1] - 48)*10 + id_mes_ascii[2] - 48;
 }
+
 int main(void) {
     HAL_Init();
 
@@ -441,6 +443,7 @@ int main(void) {
     LED1 = 1;
     LED2 = 1;
     LED3 = 1;
+    BELL = 1;
     LCD_I2C_INIT();
     //////////////////////////////////////////////////
     OUTPUT_PIN_A8 = 1;
@@ -456,7 +459,7 @@ int main(void) {
     __HAL_TIM_SET_COUNTER(&htim2, 65500);
     HAL_TIM_Base_Start_IT(&htim2);
 
-    BELL = 1;
+
     while (1) {
 
         /// nho sua bien sim_stable
@@ -481,26 +484,25 @@ int main(void) {
                 while (sim_status == 1);
                 printf("AT+CMGD=1,4%c%c", 0x0d, 0x0a);
                 sim_read = 3;
-                while (sim_status == 1);
-                sim_read = 4;
             }
         }
 
-        if (ena_id_mess==1)
-        {
-          ena_id_mess=0;
-          tinh_id_mess();
-          while (sim_status == 1);
-          printf("AT+CMGRD=%u%c%c",id_mess, 0x0d, 0x0a);
-          sim_read = 3;
-          while (sim_status == 1);
-          sim_read = 4;
+        if (state_node1 == 0) {
+            temp1_float = 0;
+            mq21_ppm = 0;
+            mp21_ppm = 0;
         }
-        
-        
+        if (state_node2 == 0) {
+            temp2_float = 0;
+            mq22_ppm = 0;
+            mp22_ppm = 0;
+        }
+        if (state_node3 == 0) {
+            temp3_float = 0;
+            mq23_ppm = 0;
+            mp23_ppm = 0;
+        }
         printf_mode = printf_lcd_i2c;
-        LCD_I2C_GOTO_XY(10, 1);
-        printf("%u", id_mess);
         if (display_mode == 1) {
             if (state_node1 == 1) {
                 LCD_I2C_GOTO_XY(1, 1);
@@ -512,9 +514,6 @@ int main(void) {
                 LCD_I2C_GOTO_XY(1, 4);
                 printf("TEMP: %0.1f%cC", temp1_float, 223);
             } else {
-                temp1_float = 0;
-                mq21_ppm = 0;
-                mp21_ppm = 0;
                 LCD_I2C_GOTO_XY(1, 1);
                 printf("NODE 1:       ");
                 LCD_I2C_GOTO_XY(1, 2);
@@ -535,9 +534,7 @@ int main(void) {
                 LCD_I2C_GOTO_XY(1, 4);
                 printf("TEMP: %0.1f%cC", temp2_float, 223);
             } else {
-                temp2_float = 0;
-                mq22_ppm = 0;
-                mp22_ppm = 0;
+
                 LCD_I2C_GOTO_XY(1, 1);
                 printf("NODE 2:       ");
                 LCD_I2C_GOTO_XY(1, 2);
@@ -558,9 +555,7 @@ int main(void) {
                 LCD_I2C_GOTO_XY(1, 4);
                 printf("TEMP: %0.1f%cC", temp3_float, 223);
             } else {
-                temp3_float = 0;
-                mq23_ppm = 0;
-                mp23_ppm = 0;
+
                 LCD_I2C_GOTO_XY(1, 1);
                 printf("NODE 3:       ");
                 LCD_I2C_GOTO_XY(1, 2);
@@ -640,9 +635,6 @@ int main(void) {
                 BELL = 0;
                 printf_mode = printf_uart2;
                 printf("%cW%c%c", 'S', 1, 'P'); // chuong dang bat
-                //                temp1_old = 0;
-                //                temp2_old = 0;
-                //                temp3_old = 0;
             }
         } else if (temp1_float > temp_level1 || mq21_ppm > gas_level1 || mp21_ppm > smoke_level1 || temp2_float > temp_level1 || mq22_ppm > gas_level1 || mp22_ppm > smoke_level1 || temp3_float > temp_level1 || mq23_ppm > gas_level1 || mp23_ppm > smoke_level1) {
 
@@ -697,20 +689,19 @@ int main(void) {
                         sim_read = 3;
                         printf("WARNING LEVEL 1%c", 0x1a);
                         ena_sms = 0;
-                        while (sim_status == 1);
-                        sim_read = 4;
                     }
                 }
             } else if (warning_level == 2) {
                 warning_level = 1;
+                BELL = 1;
+                printf_mode = printf_uart2;
+                printf("%cW%c%c", 'S', 0, 'P'); // chuong dang tat
             }
 
         } else {
             if (warning_level == 1) {
                 warning = 0;
-                BELL = 1;
-                printf_mode = printf_uart2;
-                printf("%cW%c%c", 'S', 0, 'P'); // chuong dang tat
+                ena_end_of_warning = 1;
             }
             warning_level = 0;
             temp1_old = 0;
@@ -746,10 +737,8 @@ int main(void) {
                         printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                         while (ena_sms == 0);
                         sim_read = 3;
-                        printf("WARNING - NODE 1\r\n+ Temperature: %0.2f do C\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp1_old, mq21_ppm, mp21_ppm, 0x1a);
+                        printf("WARNING - NODE 1\r\n+ Temperature: %0.2f oC\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp1_old, mq21_ppm, mp21_ppm, 0x1a);
                         ena_sms = 0;
-                        while (sim_status == 1);
-                        sim_read = 4;
                     }
                     if (ena_send_node2 == 1) {
                         ena_send_node2 = 0;
@@ -759,10 +748,8 @@ int main(void) {
                         printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                         while (ena_sms == 0);
                         sim_read = 3;
-                        printf("WARNING - NODE 2\r\n+ Temperature: %0.2f do C\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp2_old, mq22_ppm, mp22_ppm, 0x1a);
+                        printf("WARNING - NODE 2\r\n+ Temperature: %0.2f oC\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp2_old, mq22_ppm, mp22_ppm, 0x1a);
                         ena_sms = 0;
-                        while (sim_status == 1);
-                        sim_read = 4;
                     }
                     if (ena_send_node3 == 1) {
                         ena_send_node3 = 0;
@@ -772,10 +759,8 @@ int main(void) {
                         printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                         while (ena_sms == 0);
                         sim_read = 3;
-                        printf("WARNING - NODE 3\r\n+ Temperature: %0.2f do C\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp3_old, mq23_ppm, mp23_ppm, 0x1a);
+                        printf("WARNING - NODE 3\r\n+ Temperature: %0.2f oC\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp3_old, mq23_ppm, mp23_ppm, 0x1a);
                         ena_sms = 0;
-                        while (sim_status == 1);
-                        sim_read = 4;
                     }
                 }
             }
@@ -796,8 +781,6 @@ int main(void) {
                     else printf("NODE 1 OFF%c", 0x1a);
                     ena_sms = 0;
                     HAL_Delay(200);
-                    while (sim_status == 1);
-                    sim_read = 4;
                 }
             }
             ena_send_state_node1 = 0;
@@ -812,12 +795,10 @@ int main(void) {
                     printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                     while (ena_sms == 0);
                     sim_read = 3;
-                    if (state_node2 == 1) printf("NODE 2 ON%c", 0x1a);
-                    else printf("NODE 2 OFF%c", 0x1a);
+                    if (state_node2 == 1) printf("     NODE 2 ON%c", 0x1a);
+                    else printf("     NODE 2 OFF%c", 0x1a);
                     ena_sms = 0;
                     HAL_Delay(200);
-                    while (sim_status == 1);
-                    sim_read = 4;
                 }
             }
             ena_send_state_node2 = 0;
@@ -832,15 +813,31 @@ int main(void) {
                     printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                     while (ena_sms == 0);
                     sim_read = 3;
-                    if (state_node3 == 1) printf("NODE 3 ON%c", 0x1a);
-                    else printf("NODE 3 OFF%c", 0x1a);
+                    if (state_node3 == 1) printf("          NODE 3 ON%c", 0x1a);
+                    else printf("          NODE 3 OFF%c", 0x1a);
                     ena_sms = 0;
                     HAL_Delay(200);
-                    while (sim_status == 1);
-                    sim_read = 4;
                 }
             }
             ena_send_state_node3 = 0;
+        }
+
+        if (ena_end_of_warning == 1) {
+            if (sim_config == 1) {
+                if (sim_status == 0) //  sim dang ranh
+                {
+                    sim_status = 1; // sim dang ban ( dang chuan bi gui tin nhan )
+                    printf_mode = printf_uart3;
+                    sim_read = 1;
+                    HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+                    printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
+                    while (ena_sms == 0);
+                    sim_read = 3;
+                    printf("END OF WARNING%c", 0x1a);
+                    ena_sms = 0;
+                }
+            }
+            ena_end_of_warning = 0;
         }
 
         printf_mode = printf_uart2;
@@ -1147,9 +1144,9 @@ FILE __stdin;
 
 int fputc(int ch, FILE *f) {
     (void) (f);
-    if (printf_mode == printf_uart1) HAL_UART_Transmit(&huart1, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
-    else if (printf_mode == printf_uart2) HAL_UART_Transmit(&huart2, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
-    else if (printf_mode == printf_uart3) HAL_UART_Transmit(&huart3, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
+    if      (printf_mode == printf_uart1)   HAL_UART_Transmit(&huart1, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
+    else if (printf_mode == printf_uart2)   HAL_UART_Transmit(&huart2, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
+    else if (printf_mode == printf_uart3)   HAL_UART_Transmit(&huart3, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
     else if (printf_mode == printf_lcd_i2c) LCD_I2C_CHAR(ch);
     return ch;
 }
