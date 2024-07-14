@@ -1,26 +1,5 @@
-/* USER CODE BEGIN Header */
-/**
- ******************************************************************************
- * @file           : main.c
- * @brief          : Main program body
- ******************************************************************************
- * @attention
- *
- * Copyright (c) 2024 STMicroelectronics.
- * All rights reserved.
- *
- * This software is licensed under terms that can be found in the LICENSE file
- * in the root directory of this software component.
- * If no LICENSE file comes with this software, it is provided AS-IS.
- *
- ******************************************************************************
- */
-/* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
-#include "main.h"
 
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
+#include "main.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -173,10 +152,6 @@ volatile unsigned char node_update = 0;
 
 volatile _Bool call_state = 0;
 
-//volatile _Bool no_carrier = 0;
-
-//volatile _Bool begin = 0;
-
 volatile _Bool verify_call = 0;
 
 volatile _Bool sim_status = 0;
@@ -187,11 +162,13 @@ const char begin[6] = "BEGIN";
 const char carrier[8] = "CARRIER";
 const char pb_done[8] = "PB DONE";
 const char ok[3] = "OK";
-volatile unsigned char mti[20] = "MTI: ";
+volatile unsigned char mti[20] = {0x54, 0x49, 0x3a, 0x20, 0x22, 0x53, 0x4d, 0x22, 0x2c}; //MTI: "SM",
 volatile _Bool mti_ok = 0;
-volatile unsigned char id_mes = 0;
+volatile unsigned char id_mes_ascii[4] = {};
+volatile unsigned char id_index = 0;
+unsigned char id_mess = 0;
 
-volatile _Bool sim_stable = 0;
+volatile _Bool sim_stable = 1;
 
 volatile unsigned char sim_read = 0; // 0: kiem tra trang thai ban dau, 1: bat dau ">", 2: bat "BEGIN" va "NO CARRIER", 3: bat "OK", 4: bat "CMTI"
 volatile _Bool sim_config = 0;
@@ -206,25 +183,12 @@ volatile _Bool auto_warning = 1;
 
 volatile _Bool ena_send_warning = 0;
 
-uint8_t ena;
-/* USER CODE END Includes */
+unsigned int biendem = 0;
+unsigned int check = 0;
 
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
+volatile _Bool mti_true = 0;
+volatile _Bool ena_id_mess = 0;
 
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi2;
 
 TIM_HandleTypeDef htim1;
@@ -235,11 +199,6 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
-/* USER CODE BEGIN PV */
-
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
@@ -249,13 +208,7 @@ static void MX_SPI2_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM3_Init(void);
-/* USER CODE BEGIN PFP */
 
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #include "delay_us_lib.c"
 #include "i2c_lib.c"
 #include "lcd_i2c_lib.c"
@@ -367,7 +320,37 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
                 }
             }
             HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+        } else if (sim_read == 4) {
+            if (mti_ok == 0) {
+                if (byte_rx3[0] == 'T') {
+                    sim_status = 1;
+                    ena_mti = 1;
+                    mti_index = 0;
+                }
+                if (ena_mti == 1) {
+                    if (mti[mti_index] != byte_rx3[0]) {
+                        ena_mti = 0;
+                        sim_status = 0;
+                    } else {
+                        mti_index++;
+                        if (mti_index > 8) {
+                            mti_ok = 1;
+                            id_index = 0;
+                        }
+                    }
+                }
+            } else if (mti_ok == 1) {
+                if (byte_rx3[0] == 0x0d) {
+                    sim_status = 1;
+                    mti_ok = 0;
+                    ena_id_mess = 1;
+                } else {
+                    id_mes_ascii[id_index] = byte_rx3[0];
+                    id_index++;
+                }
+            }
         }
+        HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
     }
 
 }
@@ -427,34 +410,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/* USER CODE END 0 */
-
-/**
- * @brief  The application entry point.
- * @retval int
- */
+void tinh_id_mess()
+{
+  if (id_index==1) id_mess = id_mes_ascii[0]-48;
+  else if (id_index==1) id_mess = (id_mes_ascii[0]-48)*10 + id_mes_ascii[1]-48;
+  else if (id_index==1) id_mess = (id_mes_ascii[0]-48)*100 + (id_mes_ascii[1]-48)*10 + id_mes_ascii[2]-48;
+}
 int main(void) {
-    /* USER CODE BEGIN 1 */
-
-    /* USER CODE END 1 */
-
-    /* MCU Configuration--------------------------------------------------------*/
-
-    /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
     HAL_Init();
 
-    /* USER CODE BEGIN Init */
-
-    /* USER CODE END Init */
-
-    /* Configure the system clock */
     SystemClock_Config();
 
-    /* USER CODE BEGIN SysInit */
-
-    /* USER CODE END SysInit */
-
-    /* Initialize all configured peripherals */
     MX_GPIO_Init();
     MX_TIM1_Init();
     MX_USART1_UART_Init();
@@ -463,7 +429,6 @@ int main(void) {
     MX_TIM2_Init();
     MX_USART3_UART_Init();
     MX_TIM3_Init();
-    /* USER CODE BEGIN 2 */
     //////////////////////////////////////////////
     HAL_TIM_Base_Start(&htim1);
 
@@ -492,11 +457,6 @@ int main(void) {
     HAL_TIM_Base_Start_IT(&htim2);
 
     BELL = 1;
-
-    /* USER CODE END 2 */
-
-    /* Infinite loop */
-    /* USER CODE BEGIN WHILE */
     while (1) {
 
         /// nho sua bien sim_stable
@@ -515,21 +475,40 @@ int main(void) {
                 HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
                 printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                 while (ena_sms == 0);
-                sim_read = 3;
                 printf("System is Active%c", 0x1a);
                 ena_sms = 0;
+                sim_read = 3;
+                while (sim_status == 1);
+                printf("AT+CMGD=1,4%c%c", 0x0d, 0x0a);
+                sim_read = 3;
+                while (sim_status == 1);
+                sim_read = 4;
             }
         }
 
+        if (ena_id_mess==1)
+        {
+          ena_id_mess=0;
+          tinh_id_mess();
+          while (sim_status == 1);
+          printf("AT+CMGRD=%u%c%c",id_mess, 0x0d, 0x0a);
+          sim_read = 3;
+          while (sim_status == 1);
+          sim_read = 4;
+        }
+        
+        
         printf_mode = printf_lcd_i2c;
+        LCD_I2C_GOTO_XY(10, 1);
+        printf("%u", id_mess);
         if (display_mode == 1) {
             if (state_node1 == 1) {
                 LCD_I2C_GOTO_XY(1, 1);
-                printf("NODE 1:");
+                printf("NODE 1:       ");
                 LCD_I2C_GOTO_XY(1, 2);
-                printf("GAS:%5uPPM", (unsigned int) mq21_ppm);
+                printf("GAS:%5uPPM  ", (unsigned int) mq21_ppm);
                 LCD_I2C_GOTO_XY(1, 3);
-                printf("SMO:%5uPPM", (unsigned int) mp21_ppm);
+                printf("SMO:%5uPPM  ", (unsigned int) mp21_ppm);
                 LCD_I2C_GOTO_XY(1, 4);
                 printf("TEMP: %0.1f%cC", temp1_float, 223);
             } else {
@@ -537,7 +516,7 @@ int main(void) {
                 mq21_ppm = 0;
                 mp21_ppm = 0;
                 LCD_I2C_GOTO_XY(1, 1);
-                printf("NODE 1:");
+                printf("NODE 1:       ");
                 LCD_I2C_GOTO_XY(1, 2);
                 printf("             ");
                 LCD_I2C_GOTO_XY(1, 3);
@@ -548,11 +527,11 @@ int main(void) {
         } else if (display_mode == 2) {
             if (state_node2 == 1) {
                 LCD_I2C_GOTO_XY(1, 1);
-                printf("NODE 2:");
+                printf("NODE 2:       ");
                 LCD_I2C_GOTO_XY(1, 2);
-                printf("GAS:%5uPPM", (unsigned int) mq22_ppm);
+                printf("GAS:%5uPPM  ", (unsigned int) mq22_ppm);
                 LCD_I2C_GOTO_XY(1, 3);
-                printf("SMO:%5uPPM", (unsigned int) mp22_ppm);
+                printf("SMO:%5uPPM  ", (unsigned int) mp22_ppm);
                 LCD_I2C_GOTO_XY(1, 4);
                 printf("TEMP: %0.1f%cC", temp2_float, 223);
             } else {
@@ -560,7 +539,7 @@ int main(void) {
                 mq22_ppm = 0;
                 mp22_ppm = 0;
                 LCD_I2C_GOTO_XY(1, 1);
-                printf("NODE 2:");
+                printf("NODE 2:       ");
                 LCD_I2C_GOTO_XY(1, 2);
                 printf("             ");
                 LCD_I2C_GOTO_XY(1, 3);
@@ -571,11 +550,11 @@ int main(void) {
         } else if (display_mode == 3) {
             if (state_node3 == 1) {
                 LCD_I2C_GOTO_XY(1, 1);
-                printf("NODE 3:");
+                printf("NODE 3:       ");
                 LCD_I2C_GOTO_XY(1, 2);
-                printf("GAS:%5uPPM", (unsigned int) mq23_ppm);
+                printf("GAS:%5uPPM  ", (unsigned int) mq23_ppm);
                 LCD_I2C_GOTO_XY(1, 3);
-                printf("SMO:%5uPPM", (unsigned int) mp23_ppm);
+                printf("SMO:%5uPPM  ", (unsigned int) mp23_ppm);
                 LCD_I2C_GOTO_XY(1, 4);
                 printf("TEMP: %0.1f%cC", temp3_float, 223);
             } else {
@@ -583,7 +562,7 @@ int main(void) {
                 mq23_ppm = 0;
                 mp23_ppm = 0;
                 LCD_I2C_GOTO_XY(1, 1);
-                printf("NODE 3:");
+                printf("NODE 3:       ");
                 LCD_I2C_GOTO_XY(1, 2);
                 printf("             ");
                 LCD_I2C_GOTO_XY(1, 3);
@@ -696,8 +675,7 @@ int main(void) {
                 if (temp3_old == 0) {
                     temp3_old = temp3_float;
                     ena_send_node3 = 1;
-                }
-                else {
+                } else {
                     if (temp3_float - temp3_old > 2) {
                         temp3_old = temp3_float;
                         ena_send_node3 = 1;
@@ -719,6 +697,8 @@ int main(void) {
                         sim_read = 3;
                         printf("WARNING LEVEL 1%c", 0x1a);
                         ena_sms = 0;
+                        while (sim_status == 1);
+                        sim_read = 4;
                     }
                 }
             } else if (warning_level == 2) {
@@ -753,8 +733,8 @@ int main(void) {
                     }
                 }
             }
-        }
-        else if (warning_level == 1) {warning = 0;
+        } else if (warning_level == 1) {
+            warning = 0;
             if (sim_config == 1) {
                 if (sim_status == 0) { //  sim dang ranh
                     /////////////////////////////////////////////////
@@ -768,6 +748,8 @@ int main(void) {
                         sim_read = 3;
                         printf("WARNING - NODE 1\r\n+ Temperature: %0.2f do C\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp1_old, mq21_ppm, mp21_ppm, 0x1a);
                         ena_sms = 0;
+                        while (sim_status == 1);
+                        sim_read = 4;
                     }
                     if (ena_send_node2 == 1) {
                         ena_send_node2 = 0;
@@ -779,6 +761,8 @@ int main(void) {
                         sim_read = 3;
                         printf("WARNING - NODE 2\r\n+ Temperature: %0.2f do C\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp2_old, mq22_ppm, mp22_ppm, 0x1a);
                         ena_sms = 0;
+                        while (sim_status == 1);
+                        sim_read = 4;
                     }
                     if (ena_send_node3 == 1) {
                         ena_send_node3 = 0;
@@ -790,12 +774,12 @@ int main(void) {
                         sim_read = 3;
                         printf("WARNING - NODE 3\r\n+ Temperature: %0.2f do C\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp3_old, mq23_ppm, mp23_ppm, 0x1a);
                         ena_sms = 0;
-                        ena = 1;
+                        while (sim_status == 1);
+                        sim_read = 4;
                     }
                 }
             }
-        }
-        else {
+        } else {
             warning = 0;
         }
 
@@ -812,6 +796,8 @@ int main(void) {
                     else printf("NODE 1 OFF%c", 0x1a);
                     ena_sms = 0;
                     HAL_Delay(200);
+                    while (sim_status == 1);
+                    sim_read = 4;
                 }
             }
             ena_send_state_node1 = 0;
@@ -830,6 +816,8 @@ int main(void) {
                     else printf("NODE 2 OFF%c", 0x1a);
                     ena_sms = 0;
                     HAL_Delay(200);
+                    while (sim_status == 1);
+                    sim_read = 4;
                 }
             }
             ena_send_state_node2 = 0;
@@ -848,6 +836,8 @@ int main(void) {
                     else printf("NODE 3 OFF%c", 0x1a);
                     ena_sms = 0;
                     HAL_Delay(200);
+                    while (sim_status == 1);
+                    sim_read = 4;
                 }
             }
             ena_send_state_node3 = 0;
@@ -934,9 +924,9 @@ int main(void) {
 
         dem++;
         if (dem % 35 == 0) {
+            check++;
             printf_mode = printf_uart2;
-            printf("%c%05.2f%05lu%05lu%05.2f%05lu%05lu%05.2f%05lu%05lu%c", 'S', temp1_float, (unsigned long) mq21_ppm, (unsigned long) mp21_ppm, temp2_float, (unsigned long) mq22_ppm, (unsigned long) mp22_ppm, temp3_float, (unsigned long) mq23_ppm, (unsigned long) mp23_ppm, 'P');
-            LATCH = ~LATCH;
+            printf("%c%05.2f%05lu%05lu%05.2f%05lu%05lu%05.2f%05lu%05lu%05u%c", 'S', temp1_float, (unsigned long) mq21_ppm, (unsigned long) mp21_ppm, temp2_float, (unsigned long) mq22_ppm, (unsigned long) mp22_ppm, temp3_float, (unsigned long) mq23_ppm, (unsigned long) mp23_ppm, check, 'P');
             //S25.55100001000025.55100001000025.551000010000P
         }
         if (dem % 10 == 0) {
@@ -953,24 +943,12 @@ int main(void) {
             }
         }
 
-        /* USER CODE END WHILE */
-
-        /* USER CODE BEGIN 3 */
     }
-    /* USER CODE END 3 */
 }
 
-/**
- * @brief System Clock Configuration
- * @retval None
- */
 void SystemClock_Config(void) {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-    /** Initializes the RCC Oscillators according to the specified parameters
-     * in the RCC_OscInitTypeDef structure.
-     */
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
     RCC_OscInitStruct.HSEState = RCC_HSE_ON;
     RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV2;
@@ -981,9 +959,6 @@ void SystemClock_Config(void) {
     if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
         Error_Handler();
     }
-
-    /** Initializes the CPU, AHB and APB buses clocks
-     */
     RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
             | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
     RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
@@ -996,21 +971,7 @@ void SystemClock_Config(void) {
     }
 }
 
-/**
- * @brief SPI2 Initialization Function
- * @param None
- * @retval None
- */
 static void MX_SPI2_Init(void) {
-
-    /* USER CODE BEGIN SPI2_Init 0 */
-
-    /* USER CODE END SPI2_Init 0 */
-
-    /* USER CODE BEGIN SPI2_Init 1 */
-
-    /* USER CODE END SPI2_Init 1 */
-    /* SPI2 parameter configuration*/
     hspi2.Instance = SPI2;
     hspi2.Init.Mode = SPI_MODE_MASTER;
     hspi2.Init.Direction = SPI_DIRECTION_2LINES;
@@ -1026,29 +987,12 @@ static void MX_SPI2_Init(void) {
     if (HAL_SPI_Init(&hspi2) != HAL_OK) {
         Error_Handler();
     }
-    /* USER CODE BEGIN SPI2_Init 2 */
-
-    /* USER CODE END SPI2_Init 2 */
-
 }
 
-/**
- * @brief TIM1 Initialization Function
- * @param None
- * @retval None
- */
 static void MX_TIM1_Init(void) {
-
-    /* USER CODE BEGIN TIM1_Init 0 */
-
-    /* USER CODE END TIM1_Init 0 */
 
     TIM_ClockConfigTypeDef sClockSourceConfig = {0};
     TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-    /* USER CODE BEGIN TIM1_Init 1 */
-
-    /* USER CODE END TIM1_Init 1 */
     htim1.Instance = TIM1;
     htim1.Init.Prescaler = 72;
     htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -1068,29 +1012,12 @@ static void MX_TIM1_Init(void) {
     if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK) {
         Error_Handler();
     }
-    /* USER CODE BEGIN TIM1_Init 2 */
-
-    /* USER CODE END TIM1_Init 2 */
-
 }
 
-/**
- * @brief TIM2 Initialization Function
- * @param None
- * @retval None
- */
 static void MX_TIM2_Init(void) {
-
-    /* USER CODE BEGIN TIM2_Init 0 */
-
-    /* USER CODE END TIM2_Init 0 */
 
     TIM_ClockConfigTypeDef sClockSourceConfig = {0};
     TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-    /* USER CODE BEGIN TIM2_Init 1 */
-
-    /* USER CODE END TIM2_Init 1 */
     htim2.Instance = TIM2;
     htim2.Init.Prescaler = 7200;
     htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -1109,29 +1036,12 @@ static void MX_TIM2_Init(void) {
     if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK) {
         Error_Handler();
     }
-    /* USER CODE BEGIN TIM2_Init 2 */
-
-    /* USER CODE END TIM2_Init 2 */
-
 }
 
-/**
- * @brief TIM3 Initialization Function
- * @param None
- * @retval None
- */
 static void MX_TIM3_Init(void) {
-
-    /* USER CODE BEGIN TIM3_Init 0 */
-
-    /* USER CODE END TIM3_Init 0 */
 
     TIM_ClockConfigTypeDef sClockSourceConfig = {0};
     TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-    /* USER CODE BEGIN TIM3_Init 1 */
-
-    /* USER CODE END TIM3_Init 1 */
     htim3.Instance = TIM3;
     htim3.Init.Prescaler = 36000;
     htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -1150,26 +1060,9 @@ static void MX_TIM3_Init(void) {
     if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK) {
         Error_Handler();
     }
-    /* USER CODE BEGIN TIM3_Init 2 */
-
-    /* USER CODE END TIM3_Init 2 */
-
 }
 
-/**
- * @brief USART1 Initialization Function
- * @param None
- * @retval None
- */
 static void MX_USART1_UART_Init(void) {
-
-    /* USER CODE BEGIN USART1_Init 0 */
-
-    /* USER CODE END USART1_Init 0 */
-
-    /* USER CODE BEGIN USART1_Init 1 */
-
-    /* USER CODE END USART1_Init 1 */
     huart1.Instance = USART1;
     huart1.Init.BaudRate = 115200;
     huart1.Init.WordLength = UART_WORDLENGTH_8B;
@@ -1181,26 +1074,9 @@ static void MX_USART1_UART_Init(void) {
     if (HAL_UART_Init(&huart1) != HAL_OK) {
         Error_Handler();
     }
-    /* USER CODE BEGIN USART1_Init 2 */
-
-    /* USER CODE END USART1_Init 2 */
-
 }
 
-/**
- * @brief USART2 Initialization Function
- * @param None
- * @retval None
- */
 static void MX_USART2_UART_Init(void) {
-
-    /* USER CODE BEGIN USART2_Init 0 */
-
-    /* USER CODE END USART2_Init 0 */
-
-    /* USER CODE BEGIN USART2_Init 1 */
-
-    /* USER CODE END USART2_Init 1 */
     huart2.Instance = USART2;
     huart2.Init.BaudRate = 512000;
     huart2.Init.WordLength = UART_WORDLENGTH_8B;
@@ -1212,26 +1088,9 @@ static void MX_USART2_UART_Init(void) {
     if (HAL_UART_Init(&huart2) != HAL_OK) {
         Error_Handler();
     }
-    /* USER CODE BEGIN USART2_Init 2 */
-
-    /* USER CODE END USART2_Init 2 */
-
 }
 
-/**
- * @brief USART3 Initialization Function
- * @param None
- * @retval None
- */
 static void MX_USART3_UART_Init(void) {
-
-    /* USER CODE BEGIN USART3_Init 0 */
-
-    /* USER CODE END USART3_Init 0 */
-
-    /* USER CODE BEGIN USART3_Init 1 */
-
-    /* USER CODE END USART3_Init 1 */
     huart3.Instance = USART3;
     huart3.Init.BaudRate = 115200;
     huart3.Init.WordLength = UART_WORDLENGTH_8B;
@@ -1243,57 +1102,29 @@ static void MX_USART3_UART_Init(void) {
     if (HAL_UART_Init(&huart3) != HAL_OK) {
         Error_Handler();
     }
-    /* USER CODE BEGIN USART3_Init 2 */
-
-    /* USER CODE END USART3_Init 2 */
-
 }
 
-/**
- * @brief GPIO Initialization Function
- * @param None
- * @retval None
- */
 static void MX_GPIO_Init(void) {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
-    /* USER CODE BEGIN MX_GPIO_Init_1 */
-    /* USER CODE END MX_GPIO_Init_1 */
-
-    /* GPIO Ports Clock Enable */
     __HAL_RCC_GPIOC_CLK_ENABLE();
     __HAL_RCC_GPIOD_CLK_ENABLE();
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
-
-    /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-
-    /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 | MD0_Pin | MD1_Pin | RELAY4_Pin
             | RELAY3_Pin | RELAY2_Pin | GPIO_PIN_6 | GPIO_PIN_7
             | RELAY1_Pin | GPIO_PIN_9, GPIO_PIN_RESET);
-
-    /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(GPIOA, PA8_Pin | LED3_Pin | LED2_Pin | LED1_Pin, GPIO_PIN_RESET);
-
-    /*Configure GPIO pin : PC13 */
     GPIO_InitStruct.Pin = GPIO_PIN_13;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-    /*Configure GPIO pins : PA0 PA1 PA4 PA5
-                             PA6 PA7 */
     GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4 | GPIO_PIN_5
             | GPIO_PIN_6 | GPIO_PIN_7;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    /*Configure GPIO pins : PB2 MD0_Pin MD1_Pin RELAY4_Pin
-                             RELAY3_Pin RELAY2_Pin PB6 PB7
-                             RELAY1_Pin PB9 */
     GPIO_InitStruct.Pin = GPIO_PIN_2 | MD0_Pin | MD1_Pin | RELAY4_Pin
             | RELAY3_Pin | RELAY2_Pin | GPIO_PIN_6 | GPIO_PIN_7
             | RELAY1_Pin | GPIO_PIN_9;
@@ -1301,19 +1132,13 @@ static void MX_GPIO_Init(void) {
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    /*Configure GPIO pins : PA8_Pin LED3_Pin LED2_Pin LED1_Pin */
     GPIO_InitStruct.Pin = PA8_Pin | LED3_Pin | LED2_Pin | LED1_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    /* USER CODE BEGIN MX_GPIO_Init_2 */
-    /* USER CODE END MX_GPIO_Init_2 */
 }
 
-/* USER CODE BEGIN 4 */
 struct __FILE {
     int handle;
 };
@@ -1325,23 +1150,14 @@ int fputc(int ch, FILE *f) {
     if (printf_mode == printf_uart1) HAL_UART_Transmit(&huart1, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
     else if (printf_mode == printf_uart2) HAL_UART_Transmit(&huart2, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
     else if (printf_mode == printf_uart3) HAL_UART_Transmit(&huart3, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
-        //    else if (printf_mode == printf_lcd) lcd_char(ch);
     else if (printf_mode == printf_lcd_i2c) LCD_I2C_CHAR(ch);
     return ch;
 }
-/* USER CODE END 4 */
 
-/**
- * @brief  This function is executed in case of error occurrence.
- * @retval None
- */
 void Error_Handler(void) {
-    /* USER CODE BEGIN Error_Handler_Debug */
-    /* User can add his own implementation to report the HAL error return state */
     __disable_irq();
     while (1) {
     }
-    /* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT
