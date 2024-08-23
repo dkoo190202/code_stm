@@ -189,6 +189,7 @@ unsigned int check = 0;
 volatile _Bool mti_true = 0;
 volatile _Bool ena_id_mess = 0;
 _Bool ena_end_of_warning = 0;
+unsigned int verify_warning = 0;
 
 SPI_HandleTypeDef hspi2;
 
@@ -462,6 +463,7 @@ int main(void) {
 
     while (1) {
 
+      HAL_GPIO_TogglePin(GPIOC,GPIO_PIN_13);
         /// nho sua bien sim_stable
         if (sim_stable == 1) {
             if (sim_config == 0) {
@@ -470,10 +472,7 @@ int main(void) {
                 sim_read = 3;
                 while (sim_status == 1);
                 sim_config = 1;
-
-                HAL_Delay(500);
                 sim_status = 1; // sim dang ban ( dang chuan bi gui tin nhan )
-                printf_mode = printf_uart3;
                 sim_read = 1;
                 HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
                 printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
@@ -482,8 +481,6 @@ int main(void) {
                 ena_sms = 0;
                 sim_read = 3;
                 while (sim_status == 1);
-                printf("AT+CMGD=1,4%c%c", 0x0d, 0x0a);
-                sim_read = 3;
             }
         }
 
@@ -625,98 +622,111 @@ int main(void) {
             node_update = 0;
         }
 
-        //////////////////////////////////////////////////////////////////////////////////   
-        //        if (auto_warning == 1){
-        if (temp1_float > temp_level2 || mq21_ppm > gas_level2 || mp21_ppm > smoke_level2 || temp2_float > temp_level2 || mq22_ppm > gas_level2 || mp22_ppm > smoke_level2 || temp3_float > temp_level2 || mq23_ppm > gas_level2 || mp23_ppm > smoke_level2) {
-            if (warning_level != 2) {
-                warning_level = 2;
-                verify_call = 0;
-                warning = 1;
-                BELL = 0;
-                printf_mode = printf_uart2;
-                printf("%cW%c%c", 'S', 1, 'P'); // chuong dang bat
+        //////////////////////////////////////////////////////////////////////////////////       //
+        if (temp1_float > temp_level2 || mq21_ppm > gas_level2 || mp21_ppm > smoke_level2 ||     //
+                temp2_float > temp_level2 || mq22_ppm > gas_level2 || mp22_ppm > smoke_level2 || // kiem tra dieu kien canh bao muc 2
+                temp3_float > temp_level2 || mq23_ppm > gas_level2 || mp23_ppm > smoke_level2) { //
+            verify_warning++; 
+            if (verify_warning > 100) { // kiem tra 100 lan
+                verify_warning = 0;
+                if (warning_level != 2) {
+                    warning_level = 2;
+                    verify_call = 0;
+                    BELL = 0;
+                    printf_mode = printf_uart2;
+                    printf("%cW%c%c", 'S', 1, 'P'); // chuong dang bat
+                }
             }
-        } else if (temp1_float > temp_level1 || mq21_ppm > gas_level1 || mp21_ppm > smoke_level1 || temp2_float > temp_level1 || mq22_ppm > gas_level1 || mp22_ppm > smoke_level1 || temp3_float > temp_level1 || mq23_ppm > gas_level1 || mp23_ppm > smoke_level1) {
-
-            ///////////////////////////////////////
-            if (temp1_float > temp_level1) {
-                if (temp1_old == 0) {
-                    temp1_old = temp1_float;
-                    ena_send_node1 = 1;
-                } else {
-                    if (temp1_float - temp1_old > 2) {
+        } else if (temp1_float > temp_level1 || mq21_ppm > gas_level1 || mp21_ppm > smoke_level1 || //
+                temp2_float > temp_level1 || mq22_ppm > gas_level1 || mp22_ppm > smoke_level1 ||    //kiem tra dieu kien canh bao muc 1
+                temp3_float > temp_level1 || mq23_ppm > gas_level1 || mp23_ppm > smoke_level1) {    //
+            verify_warning++;
+            if (verify_warning > 100) {
+                verify_warning = 0;
+                ///////////////////////////////////////
+                if (temp1_float > temp_level1) {
+                    if (temp1_old == 0) {
                         temp1_old = temp1_float;
                         ena_send_node1 = 1;
+                    } else {
+                        if (temp1_float - temp1_old > 2) {
+                            temp1_old = temp1_float;
+                            ena_send_node1 = 1;
+                        }
                     }
-                }
-            } else temp1_old = 0;
-            //////////////////////////////////////////////
-            if (temp2_float > temp_level1) {
-                if (temp2_old == 0) {
-                    temp2_old = temp2_float;
-                    ena_send_node2 = 1;
-                } else {
-                    if (temp2_float - temp2_old > 2) {
+                } else temp1_old = 0;
+                //////////////////////////////////////////////
+                if (temp2_float > temp_level1) {
+                    if (temp2_old == 0) {
                         temp2_old = temp2_float;
                         ena_send_node2 = 1;
+                    } else {
+                        if (temp2_float - temp2_old > 2) {
+                            temp2_old = temp2_float;
+                            ena_send_node2 = 1;
+                        }
                     }
-                }
-            } else temp2_old = 0;
-            //////////////////////////////////////////////
-            if (temp3_float > temp_level1) {
-                if (temp3_old == 0) {
-                    temp3_old = temp3_float;
-                    ena_send_node3 = 1;
-                } else {
-                    if (temp3_float - temp3_old > 2) {
+                } else temp2_old = 0;
+                //////////////////////////////////////////////
+                if (temp3_float > temp_level1) {
+                    if (temp3_old == 0) {
                         temp3_old = temp3_float;
                         ena_send_node3 = 1;
+                    } else {
+                        if (temp3_float - temp3_old > 2) {
+                            temp3_old = temp3_float;
+                            ena_send_node3 = 1;
+                        }
                     }
-                }
-            } else temp3_old = 0;
-            //////////////////////////////////////////////
-            if (warning_level == 0) {
-                warning_level = 1;
-                if (sim_config == 1) {
-                    if (sim_status == 0) //  sim dang ranh
-                    {
-                        sim_status = 1; // sim dang ban ( dang chuan bi gui tin nhan )
-                        printf_mode = printf_uart3;
-                        sim_read = 1;
-                        HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-                        printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
-                        while (ena_sms == 0);
-                        sim_read = 3;
-                        printf("WARNING LEVEL 1%c", 0x1a);
-                        ena_sms = 0;
+                } else temp3_old = 0;
+                //////////////////////////////////////////////
+                if (warning_level == 0) {
+                    warning_level = 1;
+                    if (sim_config == 1) {
+                        if (sim_status == 0)
+                        {
+                            sim_status = 1; // neu sim dang khong thuc hien tac vu khac 
+                            printf_mode = printf_uart3;
+                            sim_read = 1; 
+                            HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+                            printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);// lenh gui tin nhan
+                            while (ena_sms == 0); // cho den khi nhan duoc ki tu '>'
+                            printf("WARNING LEVEL 1%c", 0x1a);// gui noi dung tin nhan
+                            sim_read = 3; // cho phep nhan phan hoi "ok" tu sim
+                            ena_sms = 0; //ko cho phep gui tin nhan
+                            while (sim_status == 1) {// cho sim gui xong tin nhan
+                            };
+                        }
                     }
+                } else if (warning_level == 2) {
+                    warning_level = 1;
+                    BELL = 1;//tat chuong
+                    printf_mode = printf_uart2;
+                    printf("%cW%c%c", 'S', 0, 'P'); // gui trang thai chuong qua esp
                 }
-            } else if (warning_level == 2) {
-                warning_level = 1;
-                BELL = 1;
-                printf_mode = printf_uart2;
-                printf("%cW%c%c", 'S', 0, 'P'); // chuong dang tat
-            }
 
-        } else {
-            if (warning_level == 1) {
-                warning = 0;
-                ena_end_of_warning = 1;
             }
-            warning_level = 0;
-            temp1_old = 0;
-            temp2_old = 0;
-            temp3_old = 0;
+        } else {
+            verify_warning++;
+            if (verify_warning > 100) {
+                verify_warning = 0;
+                if (warning_level == 1) {// khi muc canh bao ha duoi nguong thi cho phep gui tin nhan ket thuc canh bao
+                    ena_end_of_warning = 1;
+                }
+                warning_level = 0;
+                temp1_old = 0;
+                temp2_old = 0;
+                temp3_old = 0;
+            }
         }
 
 
-        if (warning_level == 2) {
-            warning = 1;
+        if (warning_level == 2) {// thuc hien cuoc goi khi co canh bao muc 2
             if (sim_config == 1) {
                 if (verify_call == 0) {
-                    if (sim_status == 0) //  sim dang ranh
+                    if (sim_status == 0) 
                     {
-                        sim_status = 1; // sim dang ban ( dang chuan bi goi )
+                        sim_status = 1;
                         printf_mode = printf_uart3;
                         sim_read = 2;
                         HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
@@ -724,10 +734,9 @@ int main(void) {
                     }
                 }
             }
-        } else if (warning_level == 1) {
-            warning = 0;
+        } else if (warning_level == 1) {// thuc hien gui tin nhan canh bao moi khi nhiet do tang them 2 do c
             if (sim_config == 1) {
-                if (sim_status == 0) { //  sim dang ranh
+                if (sim_status == 0) { 
                     /////////////////////////////////////////////////
                     if (ena_send_node1 == 1) {
                         ena_send_node1 = 0;
@@ -739,6 +748,8 @@ int main(void) {
                         sim_read = 3;
                         printf("WARNING - NODE 1\r\n+ Temperature: %0.2f oC\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp1_old, mq21_ppm, mp21_ppm, 0x1a);
                         ena_sms = 0;
+                        while (sim_status == 1) {
+                        };
                     }
                     if (ena_send_node2 == 1) {
                         ena_send_node2 = 0;
@@ -750,6 +761,8 @@ int main(void) {
                         sim_read = 3;
                         printf("WARNING - NODE 2\r\n+ Temperature: %0.2f oC\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp2_old, mq22_ppm, mp22_ppm, 0x1a);
                         ena_sms = 0;
+                        while (sim_status == 1) {
+                        };
                     }
                     if (ena_send_node3 == 1) {
                         ena_send_node3 = 0;
@@ -761,16 +774,39 @@ int main(void) {
                         sim_read = 3;
                         printf("WARNING - NODE 3\r\n+ Temperature: %0.2f oC\r\n+ Gas: %05lu PPM\r\n+ Smoke: %05lu PPM%c", temp3_old, mq23_ppm, mp23_ppm, 0x1a);
                         ena_sms = 0;
+                        while (sim_status == 1) {
+                        };
                     }
                 }
             }
         } else {
-            warning = 0;
         }
+        
+        if (ena_end_of_warning == 1) {// gui tin nhan khi canh bao ha duoi nguong
+            if (sim_config == 1) {
+                if (sim_status == 0) 
+                {
+                    sim_status = 1; 
+                    printf_mode = printf_uart3;
+                    sim_read = 1;
+                    HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
+                    printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
+                    while (ena_sms == 0);
+                    sim_read = 3;
+                    printf("END OF WARNING%c", 0x1a);
+                    ena_sms = 0;
+                    while (sim_status == 1) {
+                    };
+                }
+            }
+            ena_end_of_warning = 0;
+        }
+        
+        
 
         if (ena_send_state_node1 == 1) {
             if (sim_config == 1) {
-                if (sim_status == 0) { //  sim dang ranh
+                if (sim_status == 0) { 
                     printf_mode = printf_uart3;
                     sim_read = 1;
                     HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
@@ -780,7 +816,8 @@ int main(void) {
                     if (state_node1 == 1) printf("NODE 1 ON%c", 0x1a);
                     else printf("NODE 1 OFF%c", 0x1a);
                     ena_sms = 0;
-                    HAL_Delay(200);
+                    while (sim_status == 1) {
+                    };
                 }
             }
             ena_send_state_node1 = 0;
@@ -788,17 +825,18 @@ int main(void) {
 
         if (ena_send_state_node2 == 1) {
             if (sim_config == 1) {
-                if (sim_status == 0) { //  sim dang ranh
+                if (sim_status == 0) { 
                     printf_mode = printf_uart3;
                     sim_read = 1;
                     HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
                     printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                     while (ena_sms == 0);
                     sim_read = 3;
-                    if (state_node2 == 1) printf("     NODE 2 ON%c", 0x1a);
-                    else printf("     NODE 2 OFF%c", 0x1a);
+                    if (state_node2 == 1) printf("NODE 2 ON%c", 0x1a);
+                    else printf("NODE 2 OFF%c", 0x1a);
                     ena_sms = 0;
-                    HAL_Delay(200);
+                    while (sim_status == 1) {
+                    };
                 }
             }
             ena_send_state_node2 = 0;
@@ -806,39 +844,24 @@ int main(void) {
 
         if (ena_send_state_node3 == 1) {
             if (sim_config == 1) {
-                if (sim_status == 0) { //  sim dang ranh
+                if (sim_status == 0) { 
                     printf_mode = printf_uart3;
                     sim_read = 1;
                     HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
                     printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
                     while (ena_sms == 0);
                     sim_read = 3;
-                    if (state_node3 == 1) printf("          NODE 3 ON%c", 0x1a);
-                    else printf("          NODE 3 OFF%c", 0x1a);
+                    if (state_node3 == 1) printf("NODE 3 ON%c", 0x1a);
+                    else printf("NODE 3 OFF%c", 0x1a);
                     ena_sms = 0;
-                    HAL_Delay(200);
+                    while (sim_status == 1) {
+                    };
                 }
             }
             ena_send_state_node3 = 0;
         }
 
-        if (ena_end_of_warning == 1) {
-            if (sim_config == 1) {
-                if (sim_status == 0) //  sim dang ranh
-                {
-                    sim_status = 1; // sim dang ban ( dang chuan bi gui tin nhan )
-                    printf_mode = printf_uart3;
-                    sim_read = 1;
-                    HAL_UART_Receive_IT(&huart3, byte_rx3, 1);
-                    printf("AT+CMGS=%c0868390442%c%c%c", 0x22, 0x22, 0x0d, 0x0a);
-                    while (ena_sms == 0);
-                    sim_read = 3;
-                    printf("END OF WARNING%c", 0x1a);
-                    ena_sms = 0;
-                }
-            }
-            ena_end_of_warning = 0;
-        }
+        
 
         printf_mode = printf_uart2;
         if (SL_BT == 0) {
@@ -895,7 +918,7 @@ int main(void) {
         }
 
         if (WR_BT == 0) {
-            if (warning == 0) {
+            if (warning_level != 2) {
                 HAL_Delay(10);
                 if (WR_BT == 0) {
                     while (WR_BT == 0);
@@ -1144,9 +1167,9 @@ FILE __stdin;
 
 int fputc(int ch, FILE *f) {
     (void) (f);
-    if      (printf_mode == printf_uart1)   HAL_UART_Transmit(&huart1, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
-    else if (printf_mode == printf_uart2)   HAL_UART_Transmit(&huart2, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
-    else if (printf_mode == printf_uart3)   HAL_UART_Transmit(&huart3, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
+    if (printf_mode == printf_uart1) HAL_UART_Transmit(&huart1, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
+    else if (printf_mode == printf_uart2) HAL_UART_Transmit(&huart2, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
+    else if (printf_mode == printf_uart3) HAL_UART_Transmit(&huart3, (uint8_t *) & ch, 1, HAL_MAX_DELAY);
     else if (printf_mode == printf_lcd_i2c) LCD_I2C_CHAR(ch);
     return ch;
 }
